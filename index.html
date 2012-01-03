@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Philips Remote Control</title>
+		<meta name="description" content="">
+		<meta name="author" content="">
+
+		<!-- Le styles -->
+		<link href="bootstrap.css" rel="stylesheet">
+		<script src="js/jquery-1.7.min.js"></script> 
+
+		<link type="text/css" href="css/blitzer/jquery-ui-1.8.16.custom.css" rel="Stylesheet" />	
+		<script type="text/javascript" src="js/jquery-ui-1.8.16.custom.min.js"></script>
+
+		<script src="js/bootstrap-modal.js"></script> 
+		<script src="js/bootstrap-alerts.js"></script> 
+		<script src="js/bootstrap-twipsy.js"></script> 
+		<script src="js/bootstrap-popover.js"></script> 
+		<script src="js/bootstrap-dropdown.js"></script> 
+		<script src="js/bootstrap-scrollspy.js"></script> 
+		<script src="js/bootstrap-tabs.js"></script> 
+		<script src="js/bootstrap-buttons.js"></script> 
+
+		<!-- Add fancyBox -->
+		<link rel="stylesheet" href="js/jquery.fancybox.css?v=2.0.4" type="text/css" media="screen" />
+		<script type="text/javascript" src="js/jquery.fancybox.pack.js?v=2.0.4"></script>
+
+
+
+		<script>
+
+			var config_ip;
+
+
+			var configured=false;
+			var initok=false;
+			var error=false;
+			var AjaxUpdate_id;
+			var retry_id;
+
+			function showcookie() {
+				console.log(getCookie('IP-address'))
+			}
+
+			function saveSettings() {
+				clearTimeout(retry_id);
+				setCookie('IP-address', $("#ipaddress_txt").val(), 90);
+				config_ip=$("#ipaddress_txt").val();
+				$.fancybox.close( true );
+				$('#btn_clear').show()
+				configured=true
+				error=false;
+				init()
+			}
+
+			function clearSettings(){
+				configured=false
+				deleteCookie('IP-address');
+				$("#ipaddress_txt").val('') 
+				$('#btn_clear').hide()
+			}
+
+			function setCookie(name,value,days) {
+				if (days) {
+					var date = new Date();
+					date.setTime(date.getTime()+(days*24*60*60*1000));
+					var expires = "; expires="+date.toGMTString();
+				}
+				else var expires = "";
+			    document.cookie = name+"="+value+expires+"; path=/";
+			}
+
+			function getCookie(name) {
+				var nameEQ = name + "=";
+				var ca = document.cookie.split(';');
+				for(var i=0;i < ca.length;i++) {
+					var c = ca[i];
+					while (c.charAt(0)==' ') c = c.substring(1,c.length);
+					if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+				}
+				return null;
+			}
+
+			function deleteCookie(name) {
+				setCookie(name,"",-1);
+			}
+
+			function sendKeyEvent(key) {
+				console.log("Sending : "+key)
+				$.ajax({
+					url: 'http://'+ config_ip + ':1925/1/input/key',
+					data: JSON.stringify({ "key" : key }),
+					dataType: 'json',
+					type: 'POST',
+				})
+			}
+
+
+			// This function is called every x seconds in order to update things like:
+			function AjaxUpdate(){
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/audio/volume",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						//$.fancybox.close( true )
+						//console.log(data.current)
+						$( "#volume" ).slider( "value" , data.current)
+					},
+					error: function() {
+						showConnectError();
+					}
+				});		
+
+				// Set the current sources select box to the current selected one
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/sources/current",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						$.each(data, function(key, value) {
+							$("#tv_sources").val(value);
+						});
+					},
+				});
+
+				// Set the current channels select box to the current selected channel
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/channels/current",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						$.each(data, function(key, value) {
+							$("#tv_channel").val(value);
+						});
+					},
+				});
+
+			}
+
+
+			function testConnection() {
+				console.log("Retrying to connect...")
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/system/model",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						console.log("Cool, we have a connection again so closing the box")
+						$.fancybox.close( true )
+						AjaxUpdate_id = setInterval(function(){AjaxUpdate();}, 1000);
+						error=false;
+						if (! initok) {
+							init();
+						}
+					},
+					error: function() {
+						if (configured) {
+							retry_id = setTimeout('testConnection()', 1000);
+						}
+					}
+				});
+			
+			}
+
+			// This function will display an error box and start a second function for polling if the connection already works again
+			function showConnectError() {
+				
+				if (error) {
+					console.log('It seems that error was prevoiusly called so not running again !!!')
+					return
+				}
+				// Disable the AjaxUpdate Routine
+				clearInterval(AjaxUpdate_id);
+				// Draw a lightbox
+				$.fancybox.open({
+					href		: '#connecterror',
+					maxWidth	: 800,
+					maxHeight	: 600,
+					fitToView	: true,
+					closeBtn  	: false,
+					closeClick	: false,
+					modal		: true,
+					width		: '70%',
+					height		: '70%',
+					autoSize	: true,
+					closeClick	: false,
+					openEffect	: 'none',
+					closeEffect	: 'none'
+				});
+				testConnection();
+				error=true;
+			}
+
+			function init(){
+
+				// Draw a slider
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/audio/volume",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						initok = true;
+						keyboardShortcuts()	;
+						$( "#volume" ).slider({
+							range: "min",
+							value: data.current,
+							min: data.min,
+							max: data.max,
+						});
+					},
+					error: function() {
+						showConnectError();
+					}
+				});
+
+				// Get system info
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/system/model",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						$.each(data, function(key, value) {
+							$("#title").html("<h3>Remote control - " + value+"</h3>");
+						});
+					},
+				});
+
+				
+
+				// Get a list of available sources
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/sources",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						var sel = $("#tv_sources");
+						sel.empty(); 
+						$.each(data, function(key, value) {
+							sel.append('<option value="' + key + '">' + value.name + '</option>');
+						});
+					},
+				});
+
+				// Get a list of available TV channels
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/channels",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						var sel = $("#tv_channel");
+						sel.empty(); 
+						$.each(data, function(key, value) {
+							sel.append('<option value="' + key + '">' + value.preset + ' - ' + value.name + '</option>');
+						});
+					},
+				});
+
+				// Set the current sources select box to the current selected one
+				$.ajax({
+					type: "GET",
+					url: "http://"+ config_ip + ":1925/1/sources/current",
+					data: "{}",
+					dataType: "json",
+					success: function(data) {
+						$.each(data, function(key, value) {
+							$("#tv_sources").val(value);
+						});
+					},
+				});
+
+				// Already load all variables
+				AjaxUpdate();
+
+				// Update parameters every x ms
+				AjaxUpdate_id = setInterval(function(){AjaxUpdate();}, 1000);
+
+				}
+
+				function keyboardShortcuts(){
+					$(document).keydown(function(){
+						if(event.keyCode == 189){ 
+							sendKeyEvent('VolumeDown')
+						}
+						if(event.keyCode == 187){ 
+							sendKeyEvent('VolumeUp')
+						}
+						if(event.keyCode == 37){ 
+							sendKeyEvent('CursorLeft')
+						}
+						if(event.keyCode == 38){ 
+							sendKeyEvent('CursorUp')
+						}
+						if(event.keyCode == 39){ 
+							sendKeyEvent('CursorRight')
+						}
+						if(event.keyCode == 40){ 
+							sendKeyEvent('CursorDown')
+						}
+						if(event.keyCode == 72){ 
+							sendKeyEvent('Home')
+						}
+						if(event.keyCode == 27){ 
+							event.preventDefault()
+							sendKeyEvent('Back')
+						}
+						if(event.keyCode == 13){ 
+							event.preventDefault()
+							sendKeyEvent('Confirm')
+						}
+		
+					});
+				}
+
+
+			$(document).ready(function () {
+				$("#ipaddress_txt").keypress(function(e){
+					if(e.which == 13) {
+						saveSettings()
+					}
+				});
+
+				$("#ipaddress_txt").val(getCookie('IP-address')) 
+				config_ip=getCookie('IP-address')
+
+				if ( config_ip){
+					configured=true;
+					// Get initial values from the tv
+					init();
+				} else {
+					configured=false;
+					$('#btn_clear').hide()
+					$.fancybox({
+						href		: '#settings',
+						modal		: true,
+						maxWidth	: 800,
+						maxHeight	: 600,
+						fitToView	: true,
+						width		: '70%',
+						height		: '70%',
+						autoSize	: true,
+						closeClick	: false,
+						openEffect	: 'none',
+						closeEffect	: 'none'
+					});
+
+				}
+
+				// Change the volume when the slider changes 
+				$( "#volume" ).bind( "slide", function(event, ui) {
+					console.log(ui.value)
+					$.ajax({
+						url: 'http://'+ config_ip + ':1925/1/audio/volume',
+						data: JSON.stringify({ "muted" : false,  "current" : ui.value }),
+						dataType: 'json',
+						type: 'POST',
+					})
+				});
+
+
+					var source = $('#tv_sources').change(function () {
+						console.log(source.val())
+						$.ajax({
+							url: 'http://'+ config_ip + ':1925/1/sources/current',
+							data: JSON.stringify({ "id" : source.val() }),
+							dataType: 'json',
+							type: 'POST',
+						})
+					})
+
+					var channel = $('#tv_channel').change(function () {
+						console.log(channel.val())
+						$.ajax({
+							url: 'http://'+ config_ip + ':1925/1/channels/current',
+							data: JSON.stringify({ "id" : channel.val() }),
+							dataType: 'json',
+							type: 'POST',
+						})
+					})
+
+
+				$(".lightbox").fancybox({
+					maxWidth	: 800,
+					maxHeight	: 600,
+					fitToView	: true,
+					width		: '70%',
+					height		: '70%',
+					autoSize	: true,
+					closeClick	: false,
+					openEffect	: 'none',
+					closeEffect	: 'none'
+				});
+
+			})
+		</script>
+
+
+		<style type="text/css">
+			/* Override some defaults */
+			html, body {
+				background-color: #eee;
+			}
+			body {
+				padding-top: 10px; /* 40px to make the container go all the way to the bottom of the topbar */
+			}
+			.container > footer p {
+				text-align: center; /* center align it with the container */
+			}
+			.container {
+				width: 820px; /* downsize our container to make the content feel a bit tighter and more cohesive. NOTE: this removes two full columns from the grid, meaning you only go to 14 columns and not 16. */
+			}
+
+			/* The white background content wrapper */
+			.container > .content {
+				background-color: #fff;
+				padding: 20px;
+				margin: 0 -20px; /* negative indent the amount of the padding to maintain the grid system */
+				-webkit-border-radius: 0 0 6px 6px;
+				-moz-border-radius: 0 0 6px 6px;
+				border-radius: 0 0 6px 6px;
+				-webkit-box-shadow: 0 1px 2px rgba(0,0,0,.15);
+				-moz-box-shadow: 0 1px 2px rgba(0,0,0,.15);
+				box-shadow: 0 1px 2px rgba(0,0,0,.15);
+			}
+
+			/* Page header tweaks */
+			.page-header {
+				background-color: #f5f5f5;
+				padding: 5px 20px 10px;
+				margin: -20px -20px 20px;
+			}
+
+			/* Styles you shouldn't keep as they are for displaying this base example only */
+			.content .span10,
+			.content .span4 {
+				min-height: 500px;
+			}
+			/* Give a quick and non-cross-browser friendly divider */
+			.content .span4 {
+				margin-left: 0;
+				padding-left: 19px;
+				border-left: 1px solid #eee;
+			}
+
+			.topbar .btn {
+				border: 0;
+			}
+
+		</style>
+
+		<!-- Le fav and touch icons -->
+		<link rel="shortcut icon" href="images/favicon.ico">
+		<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+		<link rel="apple-touch-icon" sizes="72x72" href="images/apple-touch-icon-72x72.png">
+		<link rel="apple-touch-icon" sizes="114x114" href="images/apple-touch-icon-114x114.png">
+	</head>
+
+	<body>
+
+
+
+		<div id="connecterror" style="display:none;width:500px;">
+			<h1>Error connecting to your philips TV</h1>
+			This can have serveral reasons:
+			<ul>
+				<li>Your TV is off</li>
+				<li>Your TV is just starting up</li>
+				<li>The IP-address configured in the config is wrong</li>
+			</ul>
+			This box closes when a successfull connection has been established<br><br>	
+
+			<CENTER><a class="lightbox" href="#settings"><img src="images/settings.png"></a></CENTER>
+		</div>
+
+		<div id="keyboard" style="display:none;width:500px;"> 
+		<h1>Keyboard shortcuts</h1>
+		<table class="bordered-table zebra-striped">
+        	<thead>
+		        <tr>
+        			<th>Key</th>
+			        <th>Function</th>
+				</tr>
+			</thead>
+	        <tbody>
+				<tr>
+					<td><img src="images/h.png"></td>
+					<td>Home</td>
+				<tr>
+				<tr>
+					<td><img src="images/enter.png"></td>
+					<td>OK</td>
+				<tr>
+				<tr>
+					<td><img src="images/esc.png"></td>
+					<td>Return</td>
+				<tr>
+				<tr>
+					<td><img src="images/_.png"></td>
+					<td>Volume -</td>
+				<tr>
+				<tr>
+					<td><img src="images/plus.png"></td>
+					<td>Volume +</td>
+				<tr>
+				<tr>
+					<td><img src="images/arrow-1.png"></td>
+					<td>Cursor Left</td>
+				<tr>
+				<tr>
+					<td><img src="images/arrow-2.png"></td>
+					<td>Cursor Down</td>
+				<tr>
+				<tr>
+					<td><img src="images/arrow-3.png"></td>
+					<td>Cursor Up</td>
+				<tr>
+				<tr>
+					<td><img src="images/arrow-4.png"></td>
+					<td>Cursor Right</td>
+				<tr>
+
+		</table>
+		</div>
+
+		<div id="settings" style="display:none;width:500px;">
+			<h1>Connect information</h1>
+			<fieldset>
+				<div class="clearfix">
+					<label for="ipaddress_txt">IP-Address TV&nbsp;&nbsp;&nbsp;</label>
+					<div class="input">
+						<input class="xlarge" id="ipaddress_txt" name="ipaddress_txt" size="10" type="text">
+					</div>
+				</div>
+			</fieldset>
+			<A class="btn success" href="javascript:saveSettings()" >Save</a>
+			<A class="btn danger" id="btn_clear" href="javascript:clearSettings()" >Clear Settings</a>
+		</div>
+
+		<div id="mainsite" class="container-fluid">
+			<div class="sidebar">
+				<h3>Quick links</h3>
+
+				<div id="volume"> </div>
+				<br>
+				Your Input source: <select class="medium" name="mediumSelect" id="tv_sources"> </select><br/>
+				Your TV Channel: <select class="medium" name="mediumSelect" id="tv_channel"> </select> <br/>
+				<a class="lightbox" href="#keyboard">Keyboard Shortcuts help</a>
+				<br>
+				<br>
+				<a class="lightbox" href="#settings"><img src="images/settings.png"></a>
+
+
+			</div>
+
+
+			<div class="content">
+				<div class="alert-message warning hide" id="error">
+					<a class="close" href="#">×</a>
+					<p><strong>Connection Error:</strong> There is a problem with connecting to your TV</p>
+				</div> <!-- /alert box -->
+				<div id="title"><h3>Remote control</h3> </div>
+
+				<!-- 
+				still available:
+				Dot
+				Info
+				Next
+				Previous
+				WatchTV
+				Viewmode
+				AmbilightOnOff
+				Record
+				Online
+				-->
+				<IMG SRC="images/remote.png" ALT="philips remote" BORDER="0" USEMAP="#philips_remote">
+				<map id="philips_remote" name="philips_remote">
+					<area shape="circle" alt="" title="" coords="127,37,15" href="javascript:sendKeyEvent('Standby')" target="" />
+					<area shape="rect" alt="" title="" coords="54,64,103,91" href="javascript:sendKeyEvent('Stop')" target="" />
+					<area shape="rect" alt="" title="" coords="105,60,159,86" href="javascript:sendKeyEvent('Pause')" target="" />
+					<area shape="rect" alt="" title="" coords="161,61,206,88" href="javascript:sendKeyEvent('Record')" target="" />
+					<area shape="rect" alt="" title="" coords="41,141,84,159" href="javascript:sendKeyEvent('RedColour')" target="" />
+					<area shape="rect" alt="" title="" coords="86,138,128,156" href="javascript:sendKeyEvent('GreenColour')" target="" />
+					<area shape="rect" alt="" title="" coords="130,138,173,156" href="javascript:sendKeyEvent('YellowColour')" target="" />
+					<area shape="rect" alt="" title="" coords="175,138,219,156" href="javascript:sendKeyEvent('BlueColour')" target="" />
+					<area shape="circle" alt="" title="" coords="52,186,12" href="javascript:sendKeyEvent('Find')" target="" />
+					<area shape="circle" alt="" title="" coords="202,186,12" href="javascript:sendKeyEvent('Adjust')" target="" />
+					<area shape="circle" alt="" title="" coords="204,328,13" href="javascript:sendKeyEvent('Options')" target="" />
+					<area shape="circle" alt="" title="" coords="51,329,12" href="javascript:sendKeyEvent('Source')" target="" />
+					<area shape="circle" alt="" title="" coords="127,255,19" href="javascript:sendKeyEvent('Confirm')" target="" />
+					<area shape="rect" alt="" title="" coords="33,362,94,387" href="javascript:sendKeyEvent('VolumeDown')" target="" />
+					<area shape="rect" alt="" title="" coords="95,356,166,390" href="javascript:sendKeyEvent('Mute')" target="" />
+					<area shape="rect" alt="" title="" coords="167,357,225,389" href="javascript:sendKeyEvent('VolumeUp')" target="" />
+					<area shape="rect" alt="" title="" coords="32,397,96,430" href="javascript:sendKeyEvent('Digit1')" target="" />
+					<area shape="rect" alt="" title="" coords="98,399,166,432" href="javascript:sendKeyEvent('Digit2')" target="" />
+					<area shape="rect" alt="" title="" coords="168,400,230,431" href="javascript:sendKeyEvent('Digit3')" target="" />
+					<area shape="rect" alt="" title="" coords="32,436,93,467" href="javascript:sendKeyEvent('Digit4')" target="" />
+					<area shape="rect" alt="" title="" coords="97,438,161,469" href="javascript:sendKeyEvent('Digit5')" target="" />
+					<area shape="rect" alt="" title="" coords="165,438,227,470" href="javascript:sendKeyEvent('Digit6')" target="" />
+					<area shape="rect" alt="" title="" coords="36,474,95,504" href="javascript:sendKeyEvent('Digit7')" target="" />
+					<area shape="rect" alt="" title="" coords="98,477,164,505" href="javascript:sendKeyEvent('Digit8')" target="" />
+					<area shape="rect" alt="" title="" coords="166,476,220,505" href="javascript:sendKeyEvent('Digit9')" target="" />
+					<area shape="rect" alt="" title="" coords="105,513,157,546" href="javascript:sendKeyEvent('Digit0')" target="" />
+					<area shape="rect" alt="" title="" coords="43,514,101,545" href="javascript:sendKeyEvent('Subtitle')" target="" />
+					<area shape="rect" alt="" title="" coords="161,513,214,547" href="javascript:sendKeyEvent('Teletext')" target="" />
+					<area shape="rect" alt="" title="" coords="105,92,159,120" href="javascript:sendKeyEvent('PlayPause')" target="" />
+					<area shape="rect" alt="" title="" coords="47,96,103,125" href="javascript:sendKeyEvent('Rewind')" target="" />
+					<area shape="rect" alt="" title="" coords="162,95,218,124" href="javascript:sendKeyEvent('FastForward')" target="" />
+					<area shape="poly" alt="" title="" coords="79,200,107,177,121,171,129,171,136,172,144,174,156,182,160,186,170,193,178,199,185,207,165,219,159,211,150,205,138,202,123,201,105,207,95,212,91,216,90,214" href="javascript:sendKeyEvent('Home')" target="" />
+					<area shape="poly" alt="" title="" coords="78,202,48,233,40,246,39,255,38,268,47,280,57,295,66,303,82,289,74,279,70,265,70,254,73,238,79,229,86,219,88,215,87,214,85,210" href="javascript:sendKeyEvent('ChannelStepDown')" target="" />
+					<area shape="poly" alt="" title="" coords="128,235,135,236,138,237,140,239,163,219,158,213,151,209,146,205,137,204,127,202,106,209,98,213,92,218,93,221,112,240,116,237,120,235,125,234,126,234" href="javascript:sendKeyEvent('CursorUp')" target="" />
+					<area shape="poly" alt="" title="" coords="107,255,107,248,110,243,111,242,90,220,84,226,79,232,75,242,72,253,73,266,75,274,78,279,82,284,84,287,110,267,107,263,106,257,106,256" href="javascript:sendKeyEvent('CursorLeft')" target="" />
+					<area shape="poly" alt="" title="" coords="186,208,212,239,216,250,217,259,216,271,209,284,193,302,188,308,173,296,182,283,188,268,188,256,185,241,178,229,168,219,174,215" href="javascript:sendKeyEvent('ChannelStepUp')" target="" />
+					<area shape="poly" alt="" title="" coords="149,255,148,248,146,244,141,239,149,233,165,219,170,222,175,228,182,237,185,248,186,260,184,272,181,280,178,286,172,294,144,270,147,264,149,259" href="javascript:sendKeyEvent('CursorRight')" target="" />
+					<area shape="poly" alt="" title="" coords="126,316,119,315,107,310,96,304,89,298,83,291,66,305,75,312,106,339,117,343,129,345,138,345,147,342,158,335,171,324,177,318,181,314,186,309,187,308,171,296,164,303,156,307,146,311,136,315" href="javascript:sendKeyEvent('Back')" target="" />
+					<area shape="poly" alt="" title="" coords="127,276,135,275,141,272,143,271,170,294,168,297,159,304,151,307,143,311,138,313,132,314,122,314,114,312,107,309,99,304,92,299,87,293,83,290,89,285,96,279,110,268,114,272,120,275" href="javascript:sendKeyEvent('CursorDown')" target="" />
+					<area shape="poly" alt="" title="" coords="55,589,203,589,189,609,170,622,160,627,132,630,109,628,86,622,66,607,58,596" href="javascript:sendKeyEvent('AmbilightOnOff')" target="" /></map>
+			</map>
+		</div> <!-- /content -->
+	</div> <!-- /container -->
+
+</body>
+</html>
